@@ -2,8 +2,8 @@ import java.util.ArrayList;
 
 public class SpringRow {
 
-    private char[] springArray;
     private final char[] foldedArray;
+    private char[] springArray;
     private final ArrayList<Integer> foldedContigData = new ArrayList<>();
     private final ArrayList<Integer> contiguousData = new ArrayList<>();
 
@@ -11,7 +11,7 @@ public class SpringRow {
     private int unacBSprings;
     private int totalUSprings;
 
-    private final ArrayList<String> binaryOptions = new ArrayList<>();
+    private long validNumberDistributions = 0;
 
     public SpringRow(String charString) {
         // parse out data into a character array of the springs' statuses and an arraylist of the contiguous data
@@ -28,7 +28,7 @@ public class SpringRow {
     }
 
     private void unfoldSpringArray() {
-        this.springArray = new char[foldedArray.length * 5 + 4];
+        this.springArray = new char[foldedArray.length * 5 + 6];
         //repeat five times:
         for (int i = 0; i < 5; i++) {
             //Copy each character in the folded array
@@ -38,6 +38,9 @@ public class SpringRow {
                 springArray[(i) * (foldedArray.length+1) - 1] = '?';
             }
         }
+        // Add a final two working springs to make later calculations simpler
+        springArray[foldedArray.length * 5 + 4] = '.';
+        springArray[foldedArray.length * 5 + 5] = '.';
     }
 
     private void unfoldContiguousList() {
@@ -61,104 +64,81 @@ public class SpringRow {
             }
         }
         unacBSprings = totalBSprings - accountedForBSprings;
-
-        binaryIterator(totalUSprings, springArray.length, "");
     }
 
-    public void binaryIterator(int remaining1s, int remainingTot, String str){
-        if (remainingTot == 0 ) {
-            binaryOptions.add(str);
-        }
-        // try adding a 1 to the string
-        if (remaining1s != 0){
-            binaryIterator(remaining1s - 1, remainingTot -1, str + 1);
-        }
-        if (remainingTot > remaining1s){
-            binaryIterator(remaining1s, remainingTot -1, str + 0);
+    public long analyseLine() {
+
+        treeValidPossibilities(0,  0, 0, 0, totalUSprings);
+
+        return validNumberDistributions;
+    }
+
+    /** 
+     * Recursive tree method (no idea if that's the technical term) iterating through the spring array from left to right
+     * @param cDIndex The index of the contiguous array that we're currently solving for. Starts at 0 and increments when the end of a series of broken springs is reached (as long as the length of that series is what we're looking for)
+     * @param contiguousCount The running count of the number of broken strings encountered in a row. Will be compared with the this.contiguousData[cDIndex]
+     * @param sAIndex the index used to keep track of the code's progress down the springArray
+     * @param brokenUStrings the number of unknown springs assigned to be broken
+     * @param remainingUSprings the number of remaining unknown springs
+     */
+    private void treeValidPossibilities(int cDIndex, int contiguousCount, int sAIndex, int brokenUStrings, int remainingUSprings) {
+        char nextChar = springArray[sAIndex];
+        switch (nextChar) {
+            case '#' -> brokenSpringLogic(cDIndex, contiguousCount, sAIndex, brokenUStrings, remainingUSprings);
+            case '.' -> workingSpringLogic(cDIndex, contiguousCount, sAIndex, brokenUStrings, remainingUSprings);
+            case '?' -> unknownSpringLogic(cDIndex, contiguousCount, sAIndex, brokenUStrings, remainingUSprings);
         }
     }
 
-//    public int analyseLine() {
-//        int numValidDistributions = 0;
-//        //
-//        for (Integer i = 0; i < Math.pow(2, totalUSprings); i++) {
-//            String binaryString = Integer.toBinaryString(i);
-//            if (rightNumberOnes(binaryString)){
-//                if (testPotentialDistribution(checkBinaryStringLength(binaryString))){
-//                    System.out.println(++numValidDistributions);
-//                }
-//            }
-//        }
-//        return numValidDistributions;
-//    }
+    private void brokenSpringLogic(int cDIndex, int contiguousCount, int sAIndex, int brokenUStrings, int remainingUSprings) {
+        // If it's the first contiguous broken spring and there aren't any remaining contigs, discard the whole branch
+        if (contiguousCount == 0 && cDIndex == contiguousData.size()){
+            return;
+        } else {
+            // Else increment the current contiguous count then move on to the next character
+            treeValidPossibilities(cDIndex,  contiguousCount + 1,sAIndex + 1,  brokenUStrings, remainingUSprings);
+        }
+    }
 
-    public int analyseLine() {
-        int numValidDistributions = 0;
-        for (String binaryOption :
-                binaryOptions) {
-            if (testPotentialDistribution(binaryOption)){
-                ++numValidDistributions;
+    private void workingSpringLogic(int cDIndex, int contiguousCount, int sAIndex, int brokenUStrings, int remainingUSprings) {
+        // If we're at the end of the line, check if we've also used every contiguous instruction. If so, this is a valid branch
+        // The final character is always '.'
+        if (sAIndex == springArray.length - 1){
+            if (cDIndex == this.contiguousData.size()){
+                validNumberDistributions++;
             }
+            return;
         }
-        return numValidDistributions;
-    }
-
-//    private String checkBinaryStringLength(String binaryString) {
-//        while (binaryString.length() < totalUSprings){
-//            binaryString = "0" + binaryString;
-//        }
-//        return binaryString;
-//    }
-
-    // Replace the ? in the dataArray with defined springs according to the binaryInput: 0 = working spring and 1 = broken
-    private boolean testPotentialDistribution(String binaryInput) {
-        char[] binaryChars = binaryInput.toCharArray();
-        char[] filledDataArray = new char[springArray.length + 1];
-        int unknownPosition = 0;
-        for (int i = 0; i < springArray.length; i++) {
-            char c = springArray[i];
-            if (c != '?'){
-                filledDataArray[i] = c;
+        // If the current contiguous count is 0, move to the next character
+        if (contiguousCount == 0){
+            treeValidPossibilities(cDIndex, contiguousCount,sAIndex + 1, brokenUStrings, remainingUSprings);
+        }
+        // Else we're right at the end of a block of broken springs, so check their validity
+        else {
+            // If the contig count is right, move onto the next character and next contig, resetting the contig count
+            if (contiguousCount == contiguousData.get(cDIndex)){
+                treeValidPossibilities(cDIndex + 1,  0, sAIndex + 1, brokenUStrings, remainingUSprings);
             } else {
-                if (binaryChars[unknownPosition++] == '0'){
-                    filledDataArray[i] = '.';
-                } else {
-                    filledDataArray[i] = '#';
-                }
+                return;
             }
         }
-        filledDataArray[springArray.length] = '.';
-        ArrayList<Integer> contiguousCalculated = calculateContiguous(filledDataArray);
-        return contiguousCalculated.equals(contiguousData);
     }
-
-    // input should only contain '.' and '#'
-    public ArrayList<Integer> calculateContiguous(char[] dataArray) {
-        int contiguousBSprings = 0;
-        ArrayList<Integer> contiguousOutput = new ArrayList<>();
-        for (char c : dataArray) {
-            if (c == '#') {
-                contiguousBSprings++;
-            } else if (contiguousBSprings != 0) {
-                // IE if we hit the first . after one or more #
-                contiguousOutput.add(contiguousBSprings);
-                contiguousBSprings = 0;
-            }
+    
+    private void unknownSpringLogic(int cDIndex, int contiguousCount, int sAIndex, int brokenUStrings, int remainingUSprings) {
+        // If every subsequent unknown spring needs to be broken to hit the quota of broken springs, this spring must be broken
+        if (remainingUSprings + brokenUStrings == unacBSprings){
+            brokenSpringLogic(cDIndex, contiguousCount, sAIndex, brokenUStrings + 1, remainingUSprings -1);
         }
-        return contiguousOutput;
+        // If every broken spring is accounted for, this spring must be working
+        else if (brokenUStrings == unacBSprings){
+            workingSpringLogic(cDIndex, contiguousCount, sAIndex, brokenUStrings, remainingUSprings -1);
+        }
+        // Else, branch tree off with both options
+        else {
+            brokenSpringLogic(cDIndex, contiguousCount, sAIndex, brokenUStrings + 1, remainingUSprings -1);
+            workingSpringLogic(cDIndex, contiguousCount, sAIndex, brokenUStrings, remainingUSprings -1);
+        }
     }
-
-//    // Pretend 0 = working spring and 1 = broken. Do we have the right number of unaccounted for broken springs
-//    private boolean rightNumberOnes(String binaryString) {
-//        int numOnes = 0;
-//        for (char c :
-//                binaryString.toCharArray()) {
-//            if (c == '1'){
-//                numOnes++;
-//            }
-//        }
-//        return numOnes == unacBSprings;
-//    }
 }
 
 
